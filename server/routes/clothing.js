@@ -3,39 +3,72 @@ const fs = require("fs");
 const fsPromises = require("fs").promises;
 const datafile = "server/data/clothing.json";
 const router = express.Router();
+const DataMonitor = require("../DataMonitor");
 
-/* GET all clothing */
-router.route("/").get(async function (req, res) {
-	try {
-		let data = await getClothingData();
-		console.log("Returning async data..");
-		res.send(data);
-	} catch (err) {
-		console.log(err);
-		res.status(500).send("Error");
-	}
+let dataMonitor = new DataMonitor();
 
-	// getClothingData()
-	// 	.then((clothingData) => {
-	// 		console.log("Return data to the browser");
-	// 		res.send(clothingData);
-	// 	})
-	// 	.catch((err) => {
-	// 		res.status(500).send(err);
-	// 	})
-	// 	.finally(() => {
-	// 		console.log("Completed...");
-	// 	});
-	console.log("Doing more work");
+dataMonitor.on("dataAdded", (item) => {
+	console.log(`New data was added: ${item}`);
 });
 
-async function getClothingData() {
-	let rawData = fsPromises.readFile(datafile, "utf8");
-	let clothingData = JSON.parse(await rawData);
+/* GET all clothing */
+router
+	.route("/")
+	.get(async function (req, res) {
+		try {
+			let data = await getClothingData();
+			res.send(data);
+		} catch (error) {
+			res.status(500).send(error);
+		}
+	})
 
-	console.log(clothingData);
+	.post(async function (req, res) {
+		try {
+			let data = await getClothingData();
+
+			let nextID = getNextAvailableID(data);
+
+			let newClothingItem = {
+				clothingID: nextID,
+				itemName: req.body.itemName,
+				price: req.body.price,
+			};
+
+			data.push(newClothingItem);
+
+			await saveClothingData(data);
+
+			dataMonitor.emit("dataAdded", newClothingItem.itemName);
+
+			console.log("Returning new item to browser.");
+
+			res.status(201).send(newClothingItem);
+		} catch (error) {
+			res.status(500).send(error);
+		}
+	});
+
+async function getClothingData() {
+	let rawData = await fsPromises.readFile(datafile, "utf8");
+	let clothingData = JSON.parse(rawData);
 
 	return clothingData;
+}
+
+function getNextAvailableID(allClothingData) {
+	let maxID = 0;
+
+	allClothingData.forEach(function (element, index, array) {
+		if (element.clothingID > maxID) {
+			maxID = element.clothingID;
+		}
+	});
+	return ++maxID;
+}
+
+function saveClothingData(data) {
+	return fsPromises.writeFile(datafile, JSON.stringify(data, null, 4));
 }
 
 // function getClothingData(callback) {
